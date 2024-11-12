@@ -1,4 +1,4 @@
-lvez1_uart = False
+lvez1_uart = None # Alternatives are "UART" for circuit python or "pyserial" for RaspberryPi
 
 class pin(object):
     function = None
@@ -46,6 +46,6 @@ D11 = pin("LIFT OUT")
 
 D13=pin("LED")
 
-D14=pin("PI TX")
-D15=pin("PI RX")
+TX=pin("TX")
+RX=pin("RX")
 

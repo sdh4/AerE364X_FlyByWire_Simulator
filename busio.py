@@ -21,7 +21,7 @@ class I2C(object):
 class UART(object):
     device = None # The actual device we are talking to
     def __init__(self,tx=None,rx=None,*args,baudrate=9600,receiver_buffer_size=64):
-        if rx.function == "PI RX" and board.lvez1_uart:
+        if rx.function == "PI RX" and board.lvez1_uart == "UART":
             self.device = LVEZ1_UART(receiver_buffer_size)
             pass
         pass
