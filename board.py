@@ -1,4 +1,4 @@
-
+lvez1_uart = False
 
 class pin(object):
     function = None
@@ -30,17 +30,22 @@ class pin(object):
 
 D13=pin("LED")
 D5=pin("ROT CMD")
-D6=pin("FWD CMD")  # Featherboard FWD CMD
-# D12=pin("FWD CMD")   # RPI FWD CMD
+#D6=pin("FWD CMD")  # Featherboard FWD CMD
+D6 = pin("LIFT CMD")
+D12=pin("FWD CMD")   # RPI FWD CMD
 SCL=pin("SCL")
 SDA=pin("SDA")
 
 D9=pin("LEFT OUT")
 D10=pin("RIGHT OUT")
+D11 = pin("LIFT OUT")
 
 # These are for the Featherboard?
 #D7=pin("LEFT OUT") 
 #D8=pin("RIGHT OUT")
 
 D13=pin("LED")
+
+D14=pin("PI TX")
+D15=pin("PI RX")
 

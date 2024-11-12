@@ -16,6 +16,7 @@ import pwmio
 import digitalio
 
 enable_wind=False
+enable_vertical_motion=False
 
 def subplotparams_from_axessubplot(axessubplot):
     """ Return the pl.subplot() parameters corresponding
@@ -39,11 +40,26 @@ class dynamic_model_interactor(object):
     arrowabove = None
     closing=None
 
-    def get_quat(self):
+    subfig_xy=None # figure representing looking down at the craft from above
+    arrow_xy=None
+    subfig_yz=None
+    arrow_yz=None
+    subfig_xz=None
+    arrow_xz=None
+    subfig_slider=None # figure with slider for rotational control
+    slider=None # actual slider widget
+
+    subfig_altitude=None # figure representing altitude
+    altitude_plot=None
+    subfig_altitude_slider=None # figure with slider for altitude control
+    altitude_slider=None # altitude slider widget
+
+    def get_pos_and_quat(self):
         with self.model.model_lock:
             quat=copy.deepcopy(self.model.quat)
+            pos=copy.deepcopy(self.model.pos)
             pass
-        return quat
+        return (pos,quat)
 
     
     def __init__(self,model):
@@ -54,30 +70,47 @@ class dynamic_model_interactor(object):
         self.closing=False
         pass
 
-    def draw_arrows(self,orientation,world_vec_frontward):
+    def draw_arrows(self,position,orientation,world_vec_frontward):
 
         transformed_vec_frontward = vec_apply_rot(orientation,world_vec_frontward)
         
         #print("transformed",transformed_vec_frontward)
-        
-        pl.subplot(*subplotparams_from_axessubplot(self.subfig_xy))
-        if self.arrow_xy is not None:
-            self.arrow_xy.remove()
-            pass
-        self.arrow_xy = pl.arrow(-0.5*transformed_vec_frontward[0],-0.5*transformed_vec_frontward[1],transformed_vec_frontward[0],transformed_vec_frontward[1],width=0.2)
 
-        pl.subplot(*subplotparams_from_axessubplot(self.subfig_yz))
-        if self.arrow_yz is not None:
-            self.arrow_yz.remove()
+        if self.subfig_xy is not None:
+            pl.subplot(*subplotparams_from_axessubplot(self.subfig_xy))
+            if self.arrow_xy is not None:
+                self.arrow_xy.remove()
+                pass
+            self.arrow_xy = pl.arrow(-0.5*transformed_vec_frontward[0],-0.5*transformed_vec_frontward[1],transformed_vec_frontward[0],transformed_vec_frontward[1],width=0.2)
             pass
-        self.arrow_yz = pl.arrow(-0.5*transformed_vec_frontward[1],-0.5*transformed_vec_frontward[2],transformed_vec_frontward[1],transformed_vec_frontward[2],width=0.2)
-        #print("arrow:",-0.5*transformed_vec_frontward[1],-0.5*transformed_vec_frontward[2],world_vec_frontward[1],transformed_vec_frontward[2])
-        
-        pl.subplot(*subplotparams_from_axessubplot(self.subfig_xz))
-        if self.arrow_xz is not None:
-            self.arrow_xz.remove()
+
+        if self.subfig_yz is not None:
+            pl.subplot(*subplotparams_from_axessubplot(self.subfig_yz))
+            if self.arrow_yz is not None:
+                self.arrow_yz.remove()
+                pass
+            self.arrow_yz = pl.arrow(-0.5*transformed_vec_frontward[1],-0.5*transformed_vec_frontward[2],transformed_vec_frontward[1],transformed_vec_frontward[2],width=0.2)
+            #print("arrow:",-0.5*transformed_vec_frontward[1],-0.5*transformed_vec_frontward[2],world_vec_frontward[1],transformed_vec_frontward[2])
             pass
-        self.arrow_xz = pl.arrow(-0.5*transformed_vec_frontward[0],-0.5*transformed_vec_frontward[2],transformed_vec_frontward[0],transformed_vec_frontward[2],width=0.2)
+
+        if self.subfig_xz is not None:
+            pl.subplot(*subplotparams_from_axessubplot(self.subfig_xz))
+            if self.arrow_xz is not None:
+                self.arrow_xz.remove()
+                pass
+            self.arrow_xz = pl.arrow(-0.5*transformed_vec_frontward[0],-0.5*transformed_vec_frontward[2],transformed_vec_frontward[0],transformed_vec_frontward[2],width=0.2)
+            pass
+
+        if self.subfig_altitude is not None:
+            pl.subplot(*subplotparams_from_axessubplot(self.subfig_altitude))
+            if self.altitude_plot is not None:
+                # [ plot.get_axes().remove() for plot in self.altitude_plot]
+                self.subfig_altitude.clear()
+                pass
+            self.altitude_plot = pl.plot([0,10],[position[2],position[2]])
+            pl.axis([0,10,0,10])
+            pl.grid(True)
+            pass
 
         pass
 
@@ -89,13 +122,19 @@ class dynamic_model_interactor(object):
 
         
         with self.model.model_lock:
-            self.model.ROTCMD = int(self.slider.val*1000)
+            if self.slider is not None:
+                self.model.ROTCMD = int(self.slider.val*1000)
+                pass
+
+            if self.altitude_slider is not None:
+                self.model.LIFTCMD = int(self.altitude_slider.val*1000)
+                pass
             pass
 
         
-        orientation = self.get_quat()
+        (position, orientation) = self.get_pos_and_quat()
 
-        self.draw_arrows(orientation,self.world_vec_frontward)
+        self.draw_arrows(position,orientation,self.world_vec_frontward)
         if "LED" in digitalio.DigitalInOuts_by_pin:
             if digitalio.DigitalInOuts_by_pin["LED"].value:
                 pl.title("Calibration LED on")
@@ -107,7 +146,7 @@ class dynamic_model_interactor(object):
         self.fig.canvas.draw()
         pass
 
-    def close_handler(self):
+    def close_handler(self,event):
         self.closing=True
         self.timer.stop()
 
@@ -118,7 +157,7 @@ class dynamic_model_interactor(object):
         # This MUST be called from the main thread because the main thread is the ONLY one allowed to do GUI/matplotlib stuff!
 
         try: 
-            orientation = self.get_quat()
+            (position,orientation) = self.get_pos_and_quat()
 
             # Frontward direction is y
             self.world_vec_frontward=vec_apply_rot(orientation,np.array((0.0,1.0,0.0),dtype='d'))
@@ -128,30 +167,60 @@ class dynamic_model_interactor(object):
             self.fig.canvas.mpl_connect('close_event',self.close_handler)
             self.subfig_xy = pl.subplot(2,2,1)
             pl.axis((-2,2,-2,2))
-            self.subfig_yz = pl.subplot(2,2,3)        
-            pl.axis((-2,2,-2,2))
-            self.subfig_xz = pl.subplot(2,2,2)
-            pl.axis((-2,2,-2,2))
-            self.subfig_slider = pl.subplot(2,2,4)
-            self.draw_arrows(orientation,self.world_vec_frontward)
+            if enable_vertical_motion:
+                self.subfig_slider = pl.subplot(2,2,2)
+                self.subfig_altitude = pl.subplot(2,2,3)
+                self.subfig_altitude_slider = pl.subplot(2,2,4)
+                pass
+            else:
+                self.subfig_yz = pl.subplot(2,2,3)        
+                pl.axis((-2,2,-2,2))
+                self.subfig_xz = pl.subplot(2,2,2)
+                pl.axis((-2,2,-2,2))
+                self.subfig_slider = pl.subplot(2,2,4)
+                pass
+            self.draw_arrows(position,orientation,self.world_vec_frontward)
+
+            if self.subfig_xy is not None:
+                
+                pl.subplot(*subplotparams_from_axessubplot(self.subfig_xy))
+                pl.xlabel('x')
+                pl.ylabel('y')
+                pass
             
-            pl.subplot(*subplotparams_from_axessubplot(self.subfig_xy))
-            pl.xlabel('x')
-            pl.ylabel('y')
+            if self.subfig_yz is not None:
+                pl.subplot(*subplotparams_from_axessubplot(self.subfig_yz))
+                pl.xlabel('y')
+                pl.ylabel('z')
+                pass
+            
+            if self.subfig_xz is not None:
+                pl.subplot(*subplotparams_from_axessubplot(self.subfig_xz))
+                pl.xlabel('x')
+                pl.ylabel('z')
+                pass
 
-            pl.subplot(*subplotparams_from_axessubplot(self.subfig_yz))
-            pl.xlabel('y')
-            pl.ylabel('z')
-
-            pl.subplot(*subplotparams_from_axessubplot(self.subfig_xz))
-            pl.xlabel('x')
-            pl.ylabel('z')
+            if self.subfig_altitude is not None:
+                pl.subplot(*subplotparams_from_axessubplot(self.subfig_altitude))
+                #pl.xlabel('x')
+                pl.ylabel('z')
+                pass
+            
             
 
-            ax = pl.subplot(*subplotparams_from_axessubplot(self.subfig_slider))
-            self.slider = matplotlib.widgets.Slider(ax,'ROT CMD',1.0,2.0,valinit=1.5)
-            pl.xlabel('Click above to adjust\nROT CMD pulse from 0.5 to 1.5 ms')
-            #self.slider.on_changed(slider_changed)
+            if self.subfig_slider is not None:
+                slider_ax = pl.subplot(*subplotparams_from_axessubplot(self.subfig_slider))
+                self.slider = matplotlib.widgets.Slider(slider_ax,'ROT CMD',1.0,2.0,valinit=1.5)
+                pl.xlabel('Click above to adjust\nROT CMD pulse from 0.5 to 1.5 ms')
+                #self.slider.on_changed(slider_changed)
+                pass
+
+            if self.subfig_altitude_slider is not None:
+                altitude_slider_ax = pl.subplot(*subplotparams_from_axessubplot(self.subfig_altitude_slider))
+                self.altitude_slider = matplotlib.widgets.Slider(altitude_slider_ax,'LIFT CMD',1.0,2.0,valinit=1.0)
+                pl.xlabel('Click above to adjust\nLIFT CMD pulse from 0.5 to 1.5 ms')
+                #self.slider.on_changed(slider_changed)
+                pass
             
             
             self.timer=self.fig.canvas.new_timer(interval=100) # interval in ms
@@ -202,12 +271,16 @@ def vec_apply_rot(rot,vec):
     
 class dynamic_model(object):
     quat = None # orientation quaternion... array of (w,x,y,z)... should always be a unit quaternion... apply quat to a vector in the object frame to get a vector in the world frame.
+    pos=None # position offset, array of (x,y,z)
     
     angularvel = None # angular velocities ... array of (vx,vy,vz) in rad/s
+    vel=None # linear velocity array in m/s
     mass = None  # Mass in kg
+    balloon_lift = None # lift force in newtons
     Icm = None # Moment of inertia tensor about the center of mass, in object coordinates
     Icm_inverse = None # Inverse of Icm matrix
     ROTCMD = None # rotation command, in us (1500 nominal)
+    LIFTCMD=None # lift/altitude command, in us (1000 nominal)
     
     interactor = None
 
@@ -222,13 +295,17 @@ class dynamic_model(object):
         # Define the initial state of the model
         
         self.quat=np.array((1.0,0.0,0.0,0.0),dtype='d') # null rotation
+        self.pos = np.array((0.0,0.0,0.0),dtype='d') # start at origin
         self.angularvel = np.array((0.0,0.0,0.0),dtype='d') # Zero angular velocity
+        self.vel = np.array((0.0,0.0,0.0),dtype='d') # initialize not moving
         self.mass = 0.5 # Mass of free body, kg
+        self.balloon_lift = self.mass*9.8*0.85 # give lift that is 85% of the total weight
 
         # This is the initial assumed value of
         # the rotation command that you can apply through
         # clicking in the lower-right plot
         self.ROTCMD=1500
+        self.LIFTCMD=1000
 
         # The radius of gyration in each axis is
         # a measure of how distributed the mass is
@@ -336,6 +413,26 @@ class dynamic_model(object):
                         pass
                     # print("right_pulse_width_ms = %f" % (right_pulse_width_sec*1e3))
 
+                    # Extract the commanded PWM output pulse 
+                    # width from the pin assigned to "LIFT OUT"
+                    # in board.py and store this in the
+                    # variable lift_pulse_width_sec
+                    if "LIFT OUT" in pwmio.PWMOuts_by_pin:
+                        LIFT_PWM = pwmio.PWMOuts_by_pin["LIFT OUT"]
+                        lift_pulse_width_sec = (1.0/LIFT_PWM.frequency)*(LIFT_PWM.duty_cycle/65536.0)
+                        
+                        lift_gap_width_sec = (1.0/LIFT_PWM.frequency)*((65536.0-LIFT_PWM.duty_cycle)/65536.0)
+                        if lift_pulse_width_sec < .99e-3 or lift_pulse_width_sec > 2.01e-3:
+                            raise ValueError("Invalid LIFT OUT pulse width of %f ms" % (lift_pulse_width_sec*1000.0))
+                        
+                        if lift_gap_width_sec < 15e-3 or lift_gap_width_sec > 120e-3:
+                            raise ValueError("Invalid LIFT OUT gap width of %f ms" % (lift_gap_width_sec*1000.0))
+                        pass
+                    else:
+                        lift_pulse_width_sec = 1.0e-3
+                        pass
+                    # print("lift_pulse_width_ms = %f" % (lift_pulse_width_sec*1e3))
+
 
                     # Add a moment about z due to wind if wind enabled
                     if enable_wind:
@@ -375,17 +472,35 @@ class dynamic_model(object):
 
                     left_thruster_moment = -(left_pulse_width_sec*1e3-1.5)*self.thruster_force_per_ms*self.thruster_dist_from_cm
 
-
+                    left_thruster_force = ((left_pulse_width_sec*1e3-1.5)*self.thruster_force_per_ms) *np.array((0,1,0)) # force in the forward (+y) direction
+                    
                     # Right thruster is the same except positive
                     # settings makes us rotate CCW which
                     # is a positive rotation around the Z axis. 
                     right_thruster_moment = (right_pulse_width_sec*1e3-1.5)*self.thruster_force_per_ms*self.thruster_dist_from_cm
-                    
 
+                    right_thruster_force = ((right_pulse_width_sec*1e3-1.5)*self.thruster_force_per_ms) *np.array((0,1,0)) # force in the forward (+y) direction
+
+                    lift_thruster_force = ((lift_pulse_width_sec*1e3-1.5)*self.thruster_force_per_ms) *np.array((0,0,1)) # force in the up (+z) direction
 
                     # Treat wind damping as a drag torque
                     # opposing the angular velocity
                     wind_damping_factor = -.02 # N*m / (rad/s)  # Include a very small amount of damping
+
+                    # Treat air drag as a force opposing motion
+                    # Dynamic pressure q
+                    rho = 1.2 #kg/m^3
+                    vel_magnitude = np.linalg.norm(self.vel)
+                    q = 0.5*rho*vel_magnitude**2
+                    SCd = 0.2 #area*drag coefficient, m^2
+                    # Drag force D in direction opposing velocity
+                    if vel_magnitude != 0.0:
+                        D = -q*SCd*(self.vel/vel_magnitude)
+                        pass
+                    else:
+                        D = 0.0
+                        pass
+                    
 
                     # self.imu_gyro[2] gives the rotation rate around the
                     # craft z axis in rad/s
@@ -393,7 +508,15 @@ class dynamic_model(object):
                     # probably include these in the sum of moments
                     # as well)
                     wind_damping_z = self.imu_gyro[2]*wind_damping_factor
+                    # F = ma -> a = F/m
+                    # Transform thruster forces into world coordinates
+                    left_thruster_force_worldcoords = vec_apply_rot(self.quat,left_thruster_force)
+                    right_thruster_force_worldcoords = vec_apply_rot(self.quat,right_thruster_force)
+                    lift_thruster_force_worldcoords = vec_apply_rot(self.quat,lift_thruster_force)
+                    # Newton's law says sum of forces equals derivative of linear momentum
+                    Ldot  = (left_thruster_force_worldcoords + right_thruster_force_worldcoords + lift_thruster_force_worldcoords + D)
 
+                   
                     # Newton's law says sum of moments = change in
                     # angular momentum Hdot
                     
@@ -419,7 +542,7 @@ class dynamic_model(object):
                     # Update method calculates new
                     # object orientation given a particular
                     # change in angular momentum
-                    self.update(Hdot_cm,this_time_step)
+                    self.update(Ldot,Hdot_cm,this_time_step)
 
                     # Pass slider setting to PulseIn
                     
@@ -427,6 +550,11 @@ class dynamic_model(object):
                     if "ROT CMD" in pulseio.PulseIns_by_pin:
                         pulseio.PulseIns_by_pin["ROT CMD"]._Add_pulse(int(self.ROTCMD),True)
                         pulseio.PulseIns_by_pin["ROT CMD"]._Add_pulse(20000,False)
+                        pass
+
+                    if "LIFT CMD" in pulseio.PulseIns_by_pin:
+                        pulseio.PulseIns_by_pin["LIFT CMD"]._Add_pulse(int(self.LIFTCMD),True)
+                        pulseio.PulseIns_by_pin["LIFT CMD"]._Add_pulse(20000,False)
                         pass
 
                     # FWD CMD hard-wired to 1500us neutral position
@@ -448,10 +576,20 @@ class dynamic_model(object):
             pass
         
 
-    def update(self,Hdot_cm,dt):
+    def update(self,Ldot,Hdot_cm,dt):
         # Model_lock should be locked when making this call
         # Hdot_cm is the sum of moments, in world coordinates, about the center of mass
-        
+
+        # Update velocity
+        self.vel += Ldot*dt
+        # Update position
+        self.pos += self.vel*dt
+
+        # put a floor under it:
+        if self.pos[2] < 0:
+            self.pos[2] = 0
+            self.vel[2] = -self.vel[2] # bouncy floor
+            pass
         # Update angular velocity
         # Based on Ruina, chapter 8, pg 480
         # Hcm = [Icm] dot omega
