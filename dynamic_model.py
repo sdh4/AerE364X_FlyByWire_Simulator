@@ -492,7 +492,7 @@ class dynamic_model(object):
                     rho = 1.2 #kg/m^3
                     vel_magnitude = np.linalg.norm(self.vel)
                     q = 0.5*rho*vel_magnitude**2
-                    SCd = 0.2 #area*drag coefficient, m^2
+                    SCd = 0.8 #area*drag coefficient, m^2
                     # Drag force D in direction opposing velocity
                     if vel_magnitude != 0.0:
                         D = -q*SCd*(self.vel/vel_magnitude)

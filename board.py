@@ -1,4 +1,5 @@
 lvez1_uart = None # Alternatives are "UART" for circuit python or "pyserial" for RaspberryPi
+bmp3xx_i2c = False
 
 class pin(object):
     function = None
